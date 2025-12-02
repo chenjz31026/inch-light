@@ -3,29 +3,7 @@
 
 
 
-#### Tree
-
-```
-lib/
-├── constants/              # 存放常量、颜色配置
-│   └── app_colors.dart
-├── models/                 # 数据模型
-│   └── task_model.dart
-├── providers/              # 状态管理逻辑
-│   └── app_provider.dart
-├── screens/                # 页面（屏幕）
-│   ├── main_screen.dart
-│   ├── timer_page.dart
-│   └── todo_page.dart
-├── widgets/                # 可复用的 UI 组件
-│   ├── common_widgets.dart # 小组件集合 (Chip, Input, Header)
-│   └── custom_date_picker.dart # 复杂的日期选择器组件
-└── main.dart               # 程序入口
-```
-
-
-
-#### 待新增功能
+## 待新增功能
 
 - [ ] 数据可视化，可以选择周视图/月视图/年视图看到统计每日专注时长的比例条形图和折线图
 - [ ] 可新增桌面组件，专注一个，清单一个
