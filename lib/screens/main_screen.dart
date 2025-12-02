@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-// import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart'; // 剪贴板
+import 'package:provider/provider.dart';
 
 import '../constants/app_colors.dart';
+import '../providers/app_provider.dart';
 import 'timer_page.dart';
 import 'todo_page.dart';
-import 'cycle_page.dart'; // 确保你创建了 cycle_page.dart 文件
+import 'cycle_page.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -14,26 +16,25 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-
-  // 页面列表：专注、清单、周期
   final List<Widget> _pages = const [TimerPage(), TodoPage(), CyclePage()];
 
   @override
   Widget build(BuildContext context) {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+
     return Scaffold(
-      // 使用 Column 布局来实现顶部、中间内容、底部版权的垂直排列
       body: Column(
         children: [
-          // ==================== 顶部自定义导航栏 ====================
+          // 顶部导航栏
           Container(
             padding: EdgeInsets.fromLTRB(
               24,
-              MediaQuery.of(context).padding.top + 16, // 适配刘海屏高度
+              MediaQuery.of(context).padding.top + 16,
               24,
               16,
             ),
             decoration: const BoxDecoration(
-              color: AppColors.primary, // 紫色背景
+              color: AppColors.primary,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black12,
@@ -44,58 +45,85 @@ class _MainScreenState extends State<MainScreen> {
             ),
             child: Row(
               children: [
-                // 艺术字标题
-                Text(
+                const Text(
                   "寸光",
-                  style: const TextStyle(
-                    fontFamily: 'ArtFont', // 这里填你在 yaml 里定义的 family 名字
+                  style: TextStyle(
+                    fontFamily: 'ArtFont', // 确保本地字体已配置
                     fontSize: 36,
-                    fontWeight: FontWeight.w400, // 或者是 w500, 看字体粗细效果
+                    fontWeight: FontWeight.w400,
                     color: Colors.white,
                     letterSpacing: 2,
                   ),
                 ),
                 const Spacer(),
-                // 右侧状态标签
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2), // 半透明白色背景
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: const [
-                      Icon(
-                        Icons.cloud_done_rounded,
-                        size: 14,
-                        color: Colors.white, // 白色图标
+
+                // 【新增】数据备份/恢复按钮
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'export') _handleExport(context, provider);
+                    if (value == 'import') _handleImport(context, provider);
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'export',
+                      child: Row(
+                        children: [
+                          Icon(Icons.copy, size: 18, color: AppColors.textDark),
+                          SizedBox(width: 8),
+                          Text("备份数据 (复制)"),
+                        ],
                       ),
-                      SizedBox(width: 4),
-                      Text(
-                        "已同步",
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white, // 白色文字
+                    ),
+                    const PopupMenuItem(
+                      value: 'import',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.paste,
+                            size: 18,
+                            color: AppColors.textDark,
+                          ),
+                          SizedBox(width: 8),
+                          Text("恢复数据 (粘贴)"),
+                        ],
+                      ),
+                    ),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(
+                          Icons.cloud_sync_outlined,
+                          size: 16,
+                          color: Colors.white,
                         ),
-                      ),
-                    ],
+                        SizedBox(width: 4),
+                        Text(
+                          "备份/恢复",
+                          style: TextStyle(fontSize: 12, color: Colors.white),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
 
-          // ==================== 中间内容区域 ====================
           Expanded(child: _pages[_currentIndex]),
 
-          // ==================== 底部版权文字 ====================
           Container(
             width: double.infinity,
-            color: AppColors.bg, // 与页面背景一致
+            color: AppColors.bg,
             padding: const EdgeInsets.only(top: 4, bottom: 8),
             child: Text(
               "All rights reserved: Symplatt",
@@ -110,7 +138,6 @@ class _MainScreenState extends State<MainScreen> {
         ],
       ),
 
-      // ==================== 底部导航栏 ====================
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -142,7 +169,6 @@ class _MainScreenState extends State<MainScreen> {
               activeIcon: Icon(Icons.checklist_rtl_rounded),
               label: '清单',
             ),
-            // 新增的周期模块入口
             BottomNavigationBarItem(
               icon: Icon(Icons.update),
               activeIcon: Icon(Icons.history_toggle_off),
@@ -150,6 +176,56 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // 导出逻辑
+  void _handleExport(BuildContext context, AppProvider provider) {
+    final jsonStr = provider.exportDataToJson();
+    Clipboard.setData(ClipboardData(text: jsonStr));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("数据已复制到剪贴板，请粘贴到备忘录保存")));
+  }
+
+  // 导入逻辑
+  void _handleImport(BuildContext context, AppProvider provider) async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (data?.text == null || data!.text!.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("剪贴板为空")));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("确认恢复？"),
+        content: const Text("这将覆盖当前所有数据，且无法撤销。"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("取消"),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              bool success = await provider.importDataFromJson(data.text!);
+              if (success && context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text("数据恢复成功！")));
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text("数据格式错误，恢复失败")));
+              }
+            },
+            child: const Text("确定覆盖", style: TextStyle(color: Colors.red)),
+          ),
+        ],
       ),
     );
   }
