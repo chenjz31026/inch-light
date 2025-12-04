@@ -270,23 +270,34 @@ class AppProvider with ChangeNotifier {
     _activeTimerId = id;
     WakelockPlus.enable();
 
+    // 1. 启动后台服务保活
     try {
       final service = FlutterBackgroundService();
       if (!await service.isRunning()) service.startService();
-    } catch (e) {}
+    } catch (e) {
+      debugPrint("服务启动失败: $e");
+    }
 
-    DateTime lastTick = DateTime.now();
+    // 2. 【核心修复】记录“锚点”：点击开始时的系统时间
+    DateTime sessionStartTime = DateTime.now();
 
-    // [新增] 启动3分钟倒计时，触发聚焦模式
+    // 获取任务当前的初始进度（作为基准值）
+    int index = _timerTasks.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    int initialDuration = _timerTasks[index].durationSeconds;
+
+    // 3. 【功能保留】启动聚焦模式倒计时 (保留你原本的逻辑)
     _focusModeTrigger?.cancel();
-    _focusModeTrigger = Timer(const Duration(seconds: 40), () {
+    // 这里设置为 30秒 (根据你之前的需求)，如果需要40秒可自行修改
+    _focusModeTrigger = Timer(const Duration(seconds: 30), () {
       _isFocusMode = true;
       notifyListeners();
     });
 
     notifyListeners();
 
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+    // 4. 启动高频定时器 (200ms 检查一次，比 1s 更精准，防止卡顿漏秒)
+    _timer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
       int index = _timerTasks.indexWhere((t) => t.id == id);
       if (index == -1) {
         stopTimer();
@@ -294,33 +305,40 @@ class AppProvider with ChangeNotifier {
       }
       var task = _timerTasks[index];
 
-      // [需求] 实时检测跨天重置
+      // 5. 【功能保留】跨天重置检测
       final prefs = await SharedPreferences.getInstance();
       String todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
       if (prefs.getString('lastOpenDate') != todayStr) {
         _checkDailyReset(prefs);
         notifyListeners();
+        stopTimer(); // 跨天了，停止计时防止逻辑错乱
+        return;
       }
 
+      // 6. 【核心修复】绝对时间计算法 (解决计时变慢 BUG)
+      // 公式：当前进度 = 初始进度 + (当前系统时间 - 开始系统时间)
       DateTime now = DateTime.now();
-      int passed = now.difference(lastTick).inSeconds;
-      if (passed < 1) return;
-      lastTick = now;
+      int sessionElapsed = now.difference(sessionStartTime).inSeconds;
+      int newDuration = initialDuration + sessionElapsed;
 
-      if (task.timerMode == TimerMode.stopwatch) {
-        task.durationSeconds += passed;
-      } else {
-        if (task.durationSeconds < (task.targetSeconds ?? 0)) {
-          task.durationSeconds += passed;
-          if (task.durationSeconds >= (task.targetSeconds ?? 0)) {
-            task.durationSeconds = task.targetSeconds ?? 0;
-            stopTimer(); // 倒计时结束，自动停止（也会退出聚焦模式）
-            _playAlarm();
-          }
+      // 如果计算结果没变（因为是200ms检查一次，可能还没过1秒），就不更新 UI
+      if (newDuration == task.durationSeconds) return;
+
+      // 更新数据
+      task.durationSeconds = newDuration;
+
+      // 7. 倒计时结束判断
+      if (task.timerMode == TimerMode.countdown) {
+        if (task.durationSeconds >= (task.targetSeconds ?? 0)) {
+          task.durationSeconds = task.targetSeconds ?? 0;
+          stopTimer(); // 停止计时
+          _playAlarm(); // 播放铃声
         }
       }
 
+      // 8. 数据保存 (减少 IO，逢 5 的倍数保存)
       if (task.durationSeconds % 5 == 0) _saveData();
+
       notifyListeners();
     });
   }
